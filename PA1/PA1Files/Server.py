@@ -18,7 +18,7 @@ serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 serverSocket.bind((SEVER_HOST, SEVER_PORT))
 
 # start to run the server
-serverSocket.listen(1)
+serverSocket.listen(5)
 print ("Listening to socket "+ str(SEVER_HOST))
 print ("Listening on Port " + str(SEVER_PORT))
 
