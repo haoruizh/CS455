@@ -15,20 +15,22 @@ TRIES = 2
 # The packet that we shall send to each router along the path is the ICMP echo
 # request packet, which is exactly what we had used in the ICMP ping exercise.
 # We shall use the same packet that we built in the Ping exercise
-def checksum(string):
+def checksum(str):
     # In this function we make the checksum of our packet
     # hint: see icmpPing lab
+    str = bytearray(str)
     count_sum = 0
-    countTo = (len(str) / 2) * 2
-    count = 0
-    while count < countTo:
-        thisVal = ord(str[count + 1]) * 256 + ord(str[count])
+    countTo = (len(str) // 2) * 2
+    
+    for count in range (0, countTo, 2):
+        thisVal = str[count + 1] * 256 + str[count]
         count_sum = count_sum + thisVal
         count_sum = count_sum & 0xffffffff
-        count = count + 2
+        
     if countTo < len(str):
-        count_sum = count_sum + ord(str[len(str) - 1])
+        count_sum = count_sum + str[-1]
         count_sum = count_sum & 0xffffffff
+        
     count_sum = (count_sum >> 16) + (count_sum & 0xffff)
     count_sum = count_sum + (count_sum >> 16)
     calc = ~count_sum
@@ -45,6 +47,18 @@ def build_packet():
     # Append checksum to the header.
     # Don’t send the packet yet , just return the final packet in this function.
     # So the function ending should look like this
+    myCheckSum = 0
+    myID = os.getpid() & 0xFFFF
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, myCheckSum, myID,1)
+    data = struct.pack("d", time.time())
+    
+    myCheckSum = checksum(header + data)
+    if sys.platform == 'darwin':
+        myCheckSum = htons(myCheckSum) & 0xffff
+    else:
+        myCheckSum = htons(myCheckSum)
+    
+    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0 , myCheckSum, myID, 1)
     packet = header + data
     return packet
 
@@ -54,11 +68,9 @@ def get_route(hostname):
     for ttl in range(1,MAX_HOPS):
         for tries in range(TRIES):
             destAddr = gethostbyname(hostname)
-
             #Fill in start
             # Make a raw socket named mySocket
-            icmp = getprotobyname("icmp")
-            mySocket = socket(AF_INET, SOCK_DGRAM, icmp)
+            mySocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
             #Fill in end
             
             mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', ttl))
@@ -68,24 +80,29 @@ def get_route(hostname):
                 mySocket.sendto(d, (hostname, 0))
                 t= time.time()
                 startedSelect = time.time()
-                whatReady = select.select([mySocket], [], [], timeLeft)
+                whatReady = select.select([mySocket], [], [], TIMEOUT)
                 howLongInSelect = (time.time() - startedSelect)
+                
                 if whatReady[0] == []: # Timeout
                     print(" * * * Request timed out.")
+                
                 recvPacket, addr = mySocket.recvfrom(1024)
                 timeReceived = time.time()
                 timeLeft = timeLeft - howLongInSelect
+                
                 if timeLeft <= 0:
                     print(" * * * Request timed out.")
+                
             except timeout:
+                return
                 continue
 
             else:
                 
                 #Fill in start
                 #Fetch the icmp type from the IP packet
-                icmpPacket = recvPacket[20:28]
-                types, code, checksum, own_id, sequence_num = struct.unpack("BBHHH",icmpPacket)
+                icmpHeader= recvPacket[20:28]
+                types, code, checksum, own_id, sequence_num = struct.unpack("bbHHh",icmpHeader)
                 #Fill in end
                 
                 if types == 11:
@@ -103,7 +120,14 @@ def get_route(hostname):
                     return
                 else:
                     print("error")
-                break
             finally:
                 mySocket.close()
-get_route("google.com")
+
+print ("Google:")
+get_route("www.google.com")
+print("Youtube")
+get_route("www.youtube.com")
+print("WSU")
+get_route("www.wsu.edu")
+print("AMAZON")
+get_route("www.amazon.com")
